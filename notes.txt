@@ -1,0 +1,20 @@
+Focus on category as category appears on all stores and there are often multiple catgeories for a single product.
+
+1. If a category to prioritise has been included then group together all products that contain that category otherwise pick the category which occurs most often.
+Remove any products that do not.
+
+2. If a second category to prioritise has been included pick that otherwise choose the category that occurs most often.
+
+Continue until a certain benchmark of products have been reached. (not to few, but not a large number of products either)
+This is the first virtual product, remove the products from the pool of products to group and repeat on remaining products using the above criteria to
+gather all virtual product types.
+
+Place weighting on the virtual products based on:
+
+1: Prioritisation: if the user has prioritised a category then more weight will be applied to the virtual product if it contains that category.
+2: Half Life: virtual products built from products that were viewed more recently should have higher weighting.
+3: Number of products: Virtual products built from a high number of products.
+
+Thoughts on clustering by other data points?
+User could possibly give a field to cluster on eg. price. We can then build virtual products around certain price points, these virtual products
+can then be combined with the category to give a more targeted product recommendation.
