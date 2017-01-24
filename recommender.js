@@ -26,6 +26,7 @@ module.exports = function recommender (parameters) {
   var categoriesToExclude = parameters.categoriesToExclude || [];
   var categoriesToPrioritise = parameters.categoriesToPrioritise || [];
   var dataHalfLife = parameters.dataHalfLife || 0.5;
+  var items = [];
 
   if(typeof parameters.personID != 'NULL' && typeof parameters.personID != 'undefined'){
     var personID = parameters.personID;
@@ -49,7 +50,7 @@ module.exports = function recommender (parameters) {
         return;
       }
 
-      /* LOOP through signals and remove products which match the exclude criteria, if all products from a signal are removed remove the signal */
+      /* LOOP through signals and remove products which match the exclude criteria */
       for(var i=0; i < docs.length; i++){
         var signal = docs[i].signal;
 
@@ -57,6 +58,7 @@ module.exports = function recommender (parameters) {
         for(var x=0; x < signal.cart.p.length; x++){
           var prid = signal.cart.p[x].prid;
           var cat = signal.cart.p[x].cat;
+          var removeFlag = false;
           // Loop through excluded products and compare to the current item
           for(var y=0; y < productsToExclude.length; y++){
             if(prid === productsToExclude[y]){
@@ -64,6 +66,8 @@ module.exports = function recommender (parameters) {
               signal.cart.p.splice(x, 1);
               // Drop back index by one place to ensure we cover every item after removing a item from the array
               x = x - 1;
+              // Set remove flag
+              removeFlag = true;
             } else {
               // Loop through categories and compare to excluded categories
               for(var a=0; a < cat.length; a++){
@@ -74,66 +78,65 @@ module.exports = function recommender (parameters) {
                     signal.cart.p.splice(x, 1);
                     // Drop back index by one place to ensure we cover every item after removing a item from the array
                     x = x - 1;
+                    // Set remove flag
+                    removeFlag = true;
                   }
                 }
               }
             }
           }
-          // Check to see if the array is empty. If it is then remove the signal entirely.
-          if(signal.cart.p.length === 0){
-            // Remove signal
-            docs.splice(i, 1);
-            // Move index back one place
-            i = i - 1;
+          if(!removeFlag){
+            var item = {};
+            item.dt = signal.dt;
+            item.p = signal.cart.p[x];
+            items.push(item);
           }
         }
-        console.log(docs.length);
-      }
-      // FOR signal in signalData
-        // FOR product in cart.p
-          // FOR excludedProduct in productsToExclude
-            // IF prid EQUAL TO excludedProduct
-            // Remove p[product]
-            // IF p.length EQUAL TO 0
-              // Remove signalData[signal]
-            // ELSE
-              // FOR productCategory in cat
-                // FOR excludeCategory in categoriesToexclude
-                  // IF productCategory EQUAL TO excludeCategory
-                    // Remove p[product]
-                    // IF p.length EQUAL TO 0
-                    // Remove signalData[signal]
+      } // Signal Loop
+        analysisEngine (items);
     });
   });
 
+  function analysisEngine (items) {
+    var filteredItems = [];
+
+    var helpers = {
+      categoryGroup: function (items) {
+        var categoryFrequencies = {};
+        var categoryArray = [];
+
+        //Loop through items and pull out a list of each category and how many times they appear (weight)
+        for(var x=0; x < items.length; x++){
+          var item = items[x];
+          for(var y=0; y < item.p.cat.length; y++){
+            var cat = item.p.cat[y];
+             if(!categoryFrequencies.hasOwnProperty(cat)){
+               categoryFrequencies[cat] = 1;
+            } else {
+              categoryFrequencies[cat] += 1;
+            }
+          }
+        }
+
+        // Sort into an array of objects
+        for(key in categoryFrequencies){
+          categoryArray.push({'cat': key, 'weight': categoryFrequencies[key]});
+        }
+
+        return categoryArray;
+      },
+      sorter: function(categoryFrequencies){
+        return categoryFrequencies.sort(function(obj1,obj2){
+          return obj2.weight - obj1.weight;
+        });
+      }
+    };
+
+    var categoryGroups = helpers.sorter(helpers.categoryGroup(items));
+
+    // For each category locate the items and sort them by date time, then apply time and frequency rules to them to modify their weighting.
+    
 
 
-
-  /* LOOP through remaining signals strip away data points that are not required in the comparison. ie, build a object with the product and date viewed */
-  // var products = [];
-  // FOR signal in signalData
-    // FOR i=0; i < signal.p.length; i++
-      // var product = {};
-      // product.dt = signal.dt;
-      // product.p = signal.p[i];
-      // products.push(product);
-
-  /* ANALYSIS */
-  // IF categoriesToPrioritise.length != 0
-    //
-
-  /* LOOP through signal looking for the category/brand that was prioritised in the input parameters OR the category/brand which appears most often */
-  // FOR items that are found in the previous loop LOOP through these items to find other comminalities (May need multiple loops?)
-  // apply weighting to output (lower weighting for items that were viewed a long time ago)
-  // place final collection of attributes along with overall weight into OUTPUT array, remove items from this loop from the pool of items.
-  // Repeat the above until target number of clusters are found.
-
-  /* Fetch products from database */
-  // FOR EACH of the virtual product clusters build a mongodb query to search for products in the product database which match the target products
-  // Potentially exclude products that the customer has already looked at? (Possibly have this as an input paramenter)
-  // Connect to database, IF error RETURN error
-  // ELSE run query in product database and fetch all products which meet the criteria
-  // Append output criteria to the corrasponding output object ie {weight: 0.9, attributes: {brand: "Nikle", colour: "white", season: "Spring Collection"}, products: [{product 0}, {product 1}]}
-
-  // RETURN OutputArray
+  }
 }

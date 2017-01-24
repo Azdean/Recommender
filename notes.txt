@@ -18,3 +18,21 @@ Place weighting on the virtual products based on:
 Thoughts on clustering by other data points?
 User could possibly give a field to cluster on eg. price. We can then build virtual products around certain price points, these virtual products
 can then be combined with the category to give a more targeted product recommendation.
+
+
+
+/* ANALYSIS */
+/* LOOP through signal looking for the category/brand that was prioritised in the input parameters OR the category/brand which appears most often */
+// FOR items that are found in the previous loop LOOP through these items to find other comminalities (May need multiple loops?)
+// apply weighting to output (lower weighting for items that were viewed a long time ago)
+// place final collection of attributes along with overall weight into OUTPUT array, remove items from this loop from the pool of items.
+// Repeat the above until target number of clusters are found.
+
+/* Fetch products from database */
+// FOR EACH of the virtual product clusters build a mongodb query to search for products in the product database which match the target products
+// Potentially exclude products that the customer has already looked at? (Possibly have this as an input paramenter)
+// Connect to database, IF error RETURN error
+// ELSE run query in product database and fetch all products which meet the criteria
+// Append output criteria to the corrasponding output object ie {weight: 0.9, attributes: {brand: "Nikle", colour: "white", season: "Spring Collection"}, products: [{product 0}, {product 1}]}
+
+// RETURN OutputArray
