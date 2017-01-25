@@ -25,7 +25,7 @@ module.exports = function recommender (parameters) {
   var productsToExclude = parameters.productsToExclude || [];
   var categoriesToExclude = parameters.categoriesToExclude || [];
   var categoriesToPrioritise = parameters.categoriesToPrioritise || [];
-  var dataHalfLife = parameters.dataHalfLife || 0.5;
+  var halfLife = parameters.dataHalfLife || 0.5;
   var items = [];
 
   if(typeof parameters.personID != 'NULL' && typeof parameters.personID != 'undefined'){
@@ -101,29 +101,105 @@ module.exports = function recommender (parameters) {
     var filteredItems = [];
 
     var helpers = {
+      /*
+        Calculates the difference between two dates.
+        Modified from DateDiff by:  Rob Eberhardt of Slingshot Solutions
+        Sourced from: http://slingfive.com/pages/code/jsDate/jsDate.html
+      */
+      dateDiff : function(p_Interval, p_Date1, p_Date2, p_FirstDayOfWeek){
+        var monday = 1;
+      	p_FirstDayOfWeek = (isNaN(p_FirstDayOfWeek) || p_FirstDayOfWeek==0) ? monday : parseInt(p_FirstDayOfWeek);
+
+      	var dt1 = new Date(p_Date1);
+      	var dt2 = new Date(p_Date2);
+
+      	//correct Daylight Savings Ttime (DST)-affected intervals ("d" & bigger)
+      	if("h,n,s,ms".indexOf(p_Interval.toLowerCase())==-1){
+      		if(p_Date1.toString().indexOf(":") ==-1){ dt1.setUTCHours(0,0,0,0) };	// no time, assume 12am
+      		if(p_Date2.toString().indexOf(":") ==-1){ dt2.setUTCHours(0,0,0,0) };	// no time, assume 12am
+      	}
+
+      	// get ms between UTC dates and make into "difference" date
+      	var iDiffMS = dt2.valueOf() - dt1.valueOf();
+      	var dtDiff = new Date(iDiffMS);
+
+      	// calc various diffs
+      	var nYears  = dt2.getUTCFullYear() - dt1.getUTCFullYear();
+      	var nMonths = dt2.getUTCMonth() - dt1.getUTCMonth() + (nYears!=0 ? nYears*12 : 0);
+      	var nQuarters = parseInt(nMonths / 3);
+
+      	var nMilliseconds = iDiffMS;
+      	var nSeconds = parseInt(iDiffMS / 1000);
+      	var nMinutes = parseInt(nSeconds / 60);
+      	var nHours = parseInt(nMinutes / 60);
+      	var nDays  = parseInt(nHours / 24);	//now fixed for DST switch days
+      	var nWeeks = parseInt(nDays / 7);
+
+      	if(p_Interval.toLowerCase()=='ww'){
+      			// set dates to 1st & last FirstDayOfWeek
+      			var offset = Date.DatePart("w", dt1, p_FirstDayOfWeek)-1;
+      			if(offset){	dt1.setDate(dt1.getDate() +7 -offset);	}
+      			var offset = Date.DatePart("w", dt2, p_FirstDayOfWeek)-1;
+      			if(offset){	dt2.setDate(dt2.getDate() -offset);	}
+      			// recurse to "w" with adjusted dates
+      			var nCalWeeks = Date.DateDiff("w", dt1, dt2) + 1;
+      	}
+
+      	// return difference
+      	switch(p_Interval.toLowerCase()){
+      		case "yyyy": return nYears;
+      		case "q": return nQuarters;
+      		case "m": return nMonths;
+      		case "y": // day of year
+      		case "d": return nDays;
+      		case "w": return nWeeks;
+      		case "ww":return nCalWeeks; // week of year
+      		case "h": return nHours;
+      		case "n": return nMinutes;
+      		case "s": return nSeconds;
+      		case "ms":return nMilliseconds;
+      		default : return "invalid interval: '" + p_Interval + "'";
+      	}
+      },
+      /*
+        Applys half life to a view to calculate its weighting
+      */
+      weightCalculator: function(dt) {
+        var viewDate = new Date(dt);
+        var now = new Date();
+        var weight = 1;
+
+        var difference = helpers.dateDiff('m', viewDate, now);
+        if(difference){
+          for(var i=0; i < difference; i++){
+            weight = weight - (weight * halfLife);
+          }
+        }
+        return weight;
+      },
       categoryGroup: function (items) {
-        var categoryFrequencies = {};
-        var categoryArray = [];
+        var categories = {};
+        var outputArray = [];
 
         //Loop through items and pull out a list of each category and how many times they appear (weight)
         for(var x=0; x < items.length; x++){
           var item = items[x];
           for(var y=0; y < item.p.cat.length; y++){
             var cat = item.p.cat[y];
-             if(!categoryFrequencies.hasOwnProperty(cat)){
-               categoryFrequencies[cat] = 1;
+             if(!categories.hasOwnProperty(cat)){
+              categories[cat] = helpers.weightCalculator(item.dt);
             } else {
-              categoryFrequencies[cat] += 1;
+              categories[cat] += helpers.weightCalculator(item.dt);
             }
           }
         }
 
         // Sort into an array of objects
-        for(key in categoryFrequencies){
-          categoryArray.push({'cat': key, 'weight': categoryFrequencies[key]});
+        for(key in categories){
+          outputArray.push({'cat': key, 'weight': categories[key]});
         }
 
-        return categoryArray;
+        return outputArray;
       },
       sorter: function(categoryFrequencies){
         return categoryFrequencies.sort(function(obj1,obj2){
@@ -133,10 +209,6 @@ module.exports = function recommender (parameters) {
     };
 
     var categoryGroups = helpers.sorter(helpers.categoryGroup(items));
-
-    // For each category locate the items and sort them by date time, then apply time and frequency rules to them to modify their weighting.
-    
-
-
+    console.log(categoryGroups);
   }
 }

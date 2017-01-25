@@ -36,3 +36,5 @@ can then be combined with the category to give a more targeted product recommend
 // Append output criteria to the corrasponding output object ie {weight: 0.9, attributes: {brand: "Nikle", colour: "white", season: "Spring Collection"}, products: [{product 0}, {product 1}]}
 
 // RETURN OutputArray
+
+'573873c03412e8ed0bc2b0fe'
