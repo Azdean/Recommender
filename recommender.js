@@ -174,10 +174,26 @@ module.exports = function recommender (parameters) {
           for(var i=0; i < difference; i++){
             weight = weight - (weight * halfLife);
           }
+        } else {
+          // Linear values to prioritise very recent items.
+          difference = helpers.dateDiff('w', viewDate, now);
+          switch (difference){
+            case 1:
+              weight = weight * 1.5;
+              break;
+            case 2:
+              weight = weight * 1.25;
+              break;
+            case 3:
+              weight = weight * 1.125;
+              break;
+            default:
+              break;
+          }
         }
         return weight;
       },
-      categoryGroup: function (items) {
+      categoryWeightGen: function (items) {
         var categories = {};
         var outputArray = [];
 
@@ -205,10 +221,84 @@ module.exports = function recommender (parameters) {
         return categoryFrequencies.sort(function(obj1,obj2){
           return obj2.weight - obj1.weight;
         });
+      },
+      categoryCluster: function (cats, items) {
+        var outputArray = [];
+
+        // Build initial clusters by gathering all categories that appear together
+        for(var i=0; i < cats.length; i++){
+          var cat = cats[i].cat;
+          var cluster = [];
+          for(var x=0; x < items.length; x++){
+            var item = items[x];
+            for (var y = 0; y < item.p.cat.length; y++) {
+              if(item.p.cat[y] === cat){
+                cluster = item.p.cat;
+              }
+            }
+          }
+          outputArray.push(cluster);
+        }
+
+        // Loop through and remove duplicate clusters
+        for (var i = 0; i < outputArray.length; i++) {
+          var cluster = outputArray[i].sort();
+          for (var x = 0; x < outputArray.length; x++) {
+            if(x !== i){
+                var compareCluster = outputArray[x].sort();
+                if(cluster.join(',') === compareCluster.join(',')){
+                  outputArray.splice(x, 1);
+                  x = x-1;
+                }
+            }
+          }
+        }
+
+        var tempArray = [];
+        // Rebuild clusters using the weighted cluster objects
+        for (var i = 0; i < outputArray.length; i++) {
+          var clusterArray = outputArray[i];
+          var outputCluster = [];
+          for (var x = 0; x < clusterArray.length; x++) {
+            var unweightedCat = clusterArray[x];
+            for (var y = 0; y < cats.length; y++) {
+              var weightedCatObject = cats[y];
+              if(weightedCatObject.cat === unweightedCat){
+                outputCluster.push(weightedCatObject);
+              }
+            }
+          }
+          outputCluster = helpers.sorter(outputCluster);
+          tempArray.push(outputCluster);
+        }
+        // Assign tempArray values to the outputr array
+        outputArray = tempArray;
+
+        // Loop through and remove similar clusters based on key categories (if two or more of the three categories that provide the most weight to the cluster are the same remove)
+        for (var i = 0; i < outputArray.length; i++) {
+          var cluster = outputArray[i];
+          for (var x = 0; x < outputArray.length; x++) {
+            var compareCluster = outputArray[x];
+            if(x !== i){
+              if(cluster[0].cat === compareCluster[0].cat && cluster[1].cat === compareCluster[1].cat){
+                outputArray.splice(x,1);
+                x=x-1;
+              } else if(cluster[0].cat === compareCluster[0].cat && cluster[2].cat === compareCluster[2].cat){
+                outputArray.splice(x,1);
+                x=x-1;
+              } else if(cluster[1].cat === compareCluster[1].cat && cluster[2].cat === compareCluster[2].cat){
+                outputArray.splice(x,1);
+                x=x-1;
+              }
+            }
+          }
+        }
+
+        return outputArray;
       }
     };
 
-    var categoryGroups = helpers.sorter(helpers.categoryGroup(items));
-    console.log(categoryGroups);
+    var categoryWeights = helpers.sorter(helpers.categoryWeightGen(items));
+    console.log(helpers.categoryCluster(categoryWeights, items));
   }
 }
