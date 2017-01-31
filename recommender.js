@@ -26,6 +26,7 @@ module.exports = function recommender (parameters) {
   var categoriesToExclude = parameters.categoriesToExclude || [];
   var categoriesToPrioritise = parameters.categoriesToPrioritise || [];
   var halfLife = parameters.dataHalfLife || 0.5;
+  var noProductsToReturn = parameters.noProductsToReturn || 10;
   var items = [];
 
   if(typeof parameters.personID != 'NULL' && typeof parameters.personID != 'undefined'){
@@ -294,11 +295,74 @@ module.exports = function recommender (parameters) {
           }
         }
 
+        // For each cluster add together all weight totals to get total cluster weight and build cluster object
+        tempArray = [];
+        for (var i = 0; i < outputArray.length; i++) {
+          var cluster = outputArray[i];
+          var clusterWeight = 0;
+          var clusterObject = {};
+
+          for (var x = 0; x < cluster.length; x++) {
+            var member = cluster[x];
+
+            clusterWeight += member.weight;
+          }
+
+          clusterObject.cluster = cluster;
+          clusterObject.weight = clusterWeight;
+          tempArray.push(clusterObject);
+        }
+        outputArray = tempArray;
+
         return outputArray;
+      },
+      /*
+        Takes category clusters, builds database queries and returns a collection of query results.
+      */
+      queryBuilder: function(categoryClusters) {
+        MongoClient.connect(databaseConnectionURL, function(err, db) {
+          if(err){
+              console.log("An error occured: Unable to connect to MongoDB server");
+              return;
+          }
+
+          var clusterCategories = [];
+
+          for (var i = 0; i < categoryClusters.length; i++) {
+            var cluster = categoryClusters[i].cluster;
+            var categories = [];
+
+            for (var x = 0; x < cluster.length; x++) {
+              var category = cluster[x].cat;
+
+              categories.push(category);
+            }
+            clusterCategories.push(categories);
+          }
+
+          // For the moment just take the first cluster and return matching items
+          var col = db.collection(productCollection);
+          col.find({'cat.catid': {$all: clusterCategories[0]}}).toArray(function(err, docs){
+            if(docs.length > noProductsToReturn){
+              var products = docs.slice(0, noProductsToReturn);
+              outputBuilder(products, clusterCategories);
+            }
+          });
+        });
       }
     };
 
     var categoryWeights = helpers.sorter(helpers.categoryWeightGen(items));
-    console.log(helpers.categoryCluster(categoryWeights, items));
+    var categoryClusters = helpers.sorter(helpers.categoryCluster(categoryWeights, items));
+    helpers.queryBuilder(categoryClusters);
+  };
+
+  function outputBuilder(products, categoryClusters) {
+    var output = {};
+
+    output.basedOn = categoryClusters[0];
+    output.products = JSON.stringify(products);
+
+    console.log(output);
   }
 }
