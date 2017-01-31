@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/Azdean/Recommender#readme",
   "dependencies": {
+    "chalk": "^1.1.3",
     "mongodb": "^2.2.16"
   }
 }

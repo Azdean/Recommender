@@ -1,8 +1,6 @@
-var MongoClient = require('mongodb').MongoClient
-    assert = require('assert');
-
 /* Recommender.js
-   A simple product recommendation function designed to provide product recommendations based on customer history data using clustering
+   Author: UP616941
+   A simple product recommendation function designed to provide product recommendations based on customer history data using clustering.
 
    @param parameters Object: An object containing the run parameters of the function:
           databaseURL: URL of the mongodb database the function can use for signal and product data
@@ -14,6 +12,10 @@ var MongoClient = require('mongodb').MongoClient
           dataHalfLife: Rate at which older data weighing decay's over time. e.g. 0.5 would be a 50% decrease for every month
           personID: ID of the customer for which recommendations will be made
 */
+
+var MongoClient = require('mongodb').MongoClient
+    assert = require('assert')
+    chalk = require('chalk');
 
 module.exports = function recommender (parameters) {
 
@@ -28,27 +30,27 @@ module.exports = function recommender (parameters) {
   var halfLife = parameters.dataHalfLife || 0.5;
   var noProductsToReturn = parameters.noProductsToReturn || 10;
   var items = [];
+  console.time(chalk.bgWhite.black.bold('Execution time'));
 
-  if(typeof parameters.personID != 'NULL' && typeof parameters.personID != 'undefined'){
+  if(typeof parameters.personID !== 'NULL' && typeof parameters.personID !== 'undefined' && parameters.personID.length){
     var personID = parameters.personID;
   } else {
-    console.log('An error has occured: PersonID parameter undefined.');
-    return;
+    return chalk.red('An error has occured: Please supply a PersonID parameter.');
   }
+
+  console.log(chalk.green('Fetching recommendations for user: ' + personID));
 
   /* Connect to database*/
   MongoClient.connect(databaseConnectionURL, function(err, db) {
     if(err){
-        console.log("An error occured: Unable to connect to MongoDB server");
-        return;
+        return chalk.red("An error occured: Unable to connect to MongoDB server: " + err);
     }
 
     /* Fetch signal data for personID */
     var col = db.collection(signalCollection);
     col.find({'person_id': personID}).toArray(function(err, docs){
       if(err){
-        console.log('An error has occured: ' + err);
-        return;
+        return chalk.red('An error has occured: ' + err);
       }
 
       /* LOOP through signals and remove products which match the exclude criteria */
@@ -94,7 +96,7 @@ module.exports = function recommender (parameters) {
           }
         }
       } // Signal Loop
-        analysisEngine (items);
+       analysisEngine (items);
     });
   });
 
@@ -322,8 +324,7 @@ module.exports = function recommender (parameters) {
       queryBuilder: function(categoryClusters) {
         MongoClient.connect(databaseConnectionURL, function(err, db) {
           if(err){
-              console.log("An error occured: Unable to connect to MongoDB server");
-              return;
+              return chalk.red("An error occured: Unable to connect to MongoDB server: " + err);
           }
 
           var clusterCategories = [];
@@ -359,10 +360,20 @@ module.exports = function recommender (parameters) {
 
   function outputBuilder(products, categoryClusters) {
     var output = {};
+    var productNames = [];
 
     output.basedOn = categoryClusters[0];
-    output.products = JSON.stringify(products);
+
+    for (var i = 0; i < products.length; i++) {
+      var product = products[i];
+
+      productNames.push(product.n);
+    }
+    //output.products = JSON.stringify(products);
+    output.products = productNames;
 
     console.log(output);
+    console.timeEnd(chalk.bgWhite.black.bold('Execution time')); // Execution time
+    process.exit(0); // Exit process
   }
 }
