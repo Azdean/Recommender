@@ -316,6 +316,17 @@ module.exports = function recommender (parameters) {
         }
         outputArray = tempArray;
 
+        // Calculate cluster percentages which are used to populate the find output
+        tempArray = [];
+        var totalClusterWeights = 0;
+        for (var i = 0; i < outputArray.length; i++) {
+          var clusterWeight = outputArray[i].weight;
+          totalClusterWeights += clusterWeight;
+        }
+        for (var i = 0; i < outputArray.length; i++) {
+          var cluster = outputArray[i];
+          cluster.percentage = Math.round(100 * (cluster.weight / totalClusterWeights));
+        }
         return outputArray;
       },
       /*
@@ -342,13 +353,31 @@ module.exports = function recommender (parameters) {
           }
 
           // For the moment just take the first cluster and return matching items
+          // var col = db.collection(productCollection);
+          // col.find({'cat.catid': {$all: clusterCategories[0]}}).toArray(function(err, docs){
+          //   if(docs.length > noProductsToReturn){
+          //     var products = docs.slice(0, noProductsToReturn);
+          //     // outputBuilder(products, clusterCategories);
+          //   }
+          // });
+
+          // Use percentages to limit the number of products fetched for each valid cluster
           var col = db.collection(productCollection);
-          col.find({'cat.catid': {$all: clusterCategories[0]}}).toArray(function(err, docs){
-            if(docs.length > noProductsToReturn){
-              var products = docs.slice(0, noProductsToReturn);
+          function repeater(i, products){
+            if (i < clusterCategories.length) {
+              var cluster = clusterCategories[i];
+              var clusterPercentage = categoryClusters[i].percentage;
+              var limit = Math.round(noProductsToReturn * (parseFloat(clusterPercentage) / 100.0));
+
+              col.find({'cat.catid': {$all: cluster}}).limit(limit).toArray(function(err, docs){
+                products = products.concat(docs);
+                repeater((i+1), products);
+              })
+            } else {
               outputBuilder(products, clusterCategories);
             }
-          });
+          };
+          repeater(0,[]);
         });
       }
     };
@@ -358,11 +387,11 @@ module.exports = function recommender (parameters) {
     helpers.queryBuilder(categoryClusters);
   };
 
-  function outputBuilder(products, categoryClusters) {
+  function outputBuilder(products, clusterCategories) {
     var output = {};
     var productNames = [];
 
-    output.basedOn = categoryClusters[0];
+    output.basedOn = clusterCategories;
 
     for (var i = 0; i < products.length; i++) {
       var product = products[i];
@@ -372,6 +401,7 @@ module.exports = function recommender (parameters) {
     //output.products = JSON.stringify(products);
     output.products = productNames;
 
+    // console.log('-----------------------------------------------');
     console.log(output);
     console.timeEnd(chalk.bgWhite.black.bold('Execution time')); // Execution time
     process.exit(0); // Exit process
