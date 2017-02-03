@@ -369,9 +369,10 @@ module.exports = function recommender (parameters) {
               var clusterPercentage = categoryClusters[i].percentage;
               var limit = Math.round(noProductsToReturn * (parseFloat(clusterPercentage) / 100.0));
 
+              // !issue - Unable to handle empty sets resulting in returning less products than requested
               col.find({'cat.catid': {$all: cluster}}).limit(limit).toArray(function(err, docs){
-                products = products.concat(docs);
-                repeater((i+1), products);
+                  products = products.concat(docs);
+                  repeater((i+1), products);
               })
             } else {
               outputBuilder(products, clusterCategories);
