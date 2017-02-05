@@ -394,7 +394,7 @@ module.exports = function recommender (parameters) {
                     for (var x = 0; x < limit; x++) {
                       var docs = productStore[(Math.floor(Math.random() * (i-1)))];
                       var randomNo = (Math.floor(Math.random() * docs.length));
-                      var product = docs[randomNo];
+                      var product = docs[randomNo]; 
 
 
 
