@@ -39,18 +39,19 @@ module.exports = function recommender (parameters) {
   }
 
   console.log(chalk.green('Fetching recommendations for user: ' + personID));
-
   /* Connect to database*/
   MongoClient.connect(databaseConnectionURL, function(err, db) {
     if(err){
-        return chalk.red("An error occured: Unable to connect to MongoDB server: " + err);
+        console.log(chalk.red("An error occured: Unable to connect to MongoDB server: " + err));
+        return;
     }
 
     /* Fetch signal data for personID */
     var col = db.collection(signalCollection);
     col.find({'person_id': personID}).toArray(function(err, docs){
       if(err){
-        return chalk.red('An error has occured: ' + err);
+        console.log(chalk.red('An error has occured: ' + err));
+        return;
       }
 
       /* LOOP through signals and remove products which match the exclude criteria */
@@ -335,7 +336,8 @@ module.exports = function recommender (parameters) {
       queryBuilder: function(categoryClusters) {
         MongoClient.connect(databaseConnectionURL, function(err, db) {
           if(err){
-              return chalk.red("An error occured: Unable to connect to MongoDB server: " + err);
+              console.log(chalk.red("An error occured: Unable to connect to MongoDB server: " + err));
+              return;
           }
 
           var clusterCategories = [];
@@ -363,15 +365,48 @@ module.exports = function recommender (parameters) {
 
           // Use percentages to limit the number of products fetched for each valid cluster
           var col = db.collection(productCollection);
+          var productStore = [];
           function repeater(i, products){
             if (i < clusterCategories.length) {
               var cluster = clusterCategories[i];
               var clusterPercentage = categoryClusters[i].percentage;
               var limit = Math.round(noProductsToReturn * (parseFloat(clusterPercentage) / 100.0));
 
-              // !issue - Unable to handle empty sets resulting in returning less products than requested
-              col.find({'cat.catid': {$all: cluster}}).limit(limit).toArray(function(err, docs){
-                  products = products.concat(docs);
+              // !Solved 5th Feb - Unable to handle empty sets resulting in returning less products than requested
+              col.find({'cat.catid': {$all: cluster}}).toArray(function(err, docs){
+                  // Grab a random selection of products from the returned product pool
+                  if (docs.length) {
+                    for (var x = 0; x < limit; x++) {
+                      var randomNo = (Math.floor(Math.random() * docs.length));
+                      var product = docs[randomNo];
+
+                      // Add product to output
+                      products.push(product);
+
+                      // Remove product from docs as we have used it
+                      docs.splice(randomNo, 1);
+                    }
+                    // push remaining products to product store incase we need to use them later
+                    productStore.push(docs);
+                  } else {
+                    // If the cluster returned a empty product set then we will use products from the previous clusters (We will filter in *new* products here too once implimented)
+                    clusterCategories.splice(i, 1); // Remove failed cluster
+                    for (var x = 0; x < limit; x++) {
+                      var docs = productStore[(Math.floor(Math.random() * (i-1)))];
+                      var randomNo = (Math.floor(Math.random() * docs.length));
+                      var product = docs[randomNo];
+
+
+
+                      // Add product to output
+                      products.push(product);
+
+                      // Remove product from docs as we have used it
+                      docs.splice(randomNo, 1);
+                    }
+                    // Reset the position of i due to the removal of the failed cluster
+                    i = i - 1;
+                  }
                   repeater((i+1), products);
               })
             } else {
@@ -399,7 +434,7 @@ module.exports = function recommender (parameters) {
 
       productNames.push(product.n);
     }
-    //output.products = JSON.stringify(products);
+    // output.products = JSON.stringify(products);
     output.products = productNames;
 
     // console.log('-----------------------------------------------');
