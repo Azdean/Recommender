@@ -11,6 +11,7 @@
           categoriesToPrioritise: Array[] containing product catgeories to prioritise, will be prioritised in array order
           dataHalfLife: Rate at which older data weighing decay's over time. e.g. 0.5 would be a 50% decrease for every month
           personID: ID of the customer for which recommendations will be made
+          pushNewProducts: Bool toggles incorporating products from the collaborative filter into recommendations
 */
 
 var MongoClient = require('mongodb').MongoClient
@@ -29,6 +30,8 @@ module.exports = function recommender (parameters) {
   var categoriesToPrioritise = parameters.categoriesToPrioritise || [];
   var halfLife = parameters.dataHalfLife || 0.5;
   var noProductsToReturn = parameters.noProductsToReturn || 10;
+  var pushNewProducts = parameters.pushNewProducts || true;
+  var newProductPercentage = parameters.newProductPercentage || 0.2;
   var items = [];
   console.time(chalk.bgWhite.black.bold('Execution time'));
 
@@ -366,11 +369,17 @@ module.exports = function recommender (parameters) {
           // Use percentages to limit the number of products fetched for each valid cluster
           var col = db.collection(productCollection);
           var productStore = [];
-          function repeater(i, products){
+          function recommendationGenerator(i, products){
             if (i < clusterCategories.length) {
               var cluster = clusterCategories[i];
               var clusterPercentage = categoryClusters[i].percentage;
               var limit = Math.round(noProductsToReturn * (parseFloat(clusterPercentage) / 100.0));
+
+              if (pushNewProducts && typeof pushNewProducts !== 'undefined') {
+                noNewProducts = (noProductsToReturn * newProductPercentage);
+                var limit = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(clusterPercentage) / 100.0));
+                // Pull in new products here!
+              }
 
               // !Solved 5th Feb - Unable to handle empty sets resulting in returning less products than requested
               col.find({'cat.catid': {$all: cluster}}).toArray(function(err, docs){
@@ -394,9 +403,7 @@ module.exports = function recommender (parameters) {
                     for (var x = 0; x < limit; x++) {
                       var docs = productStore[(Math.floor(Math.random() * (i-1)))];
                       var randomNo = (Math.floor(Math.random() * docs.length));
-                      var product = docs[randomNo]; 
-
-
+                      var product = docs[randomNo];
 
                       // Add product to output
                       products.push(product);
@@ -407,13 +414,13 @@ module.exports = function recommender (parameters) {
                     // Reset the position of i due to the removal of the failed cluster
                     i = i - 1;
                   }
-                  repeater((i+1), products);
+                  recommendationGenerator((i+1), products);
               })
             } else {
               outputBuilder(products, clusterCategories);
             }
           };
-          repeater(0,[]);
+          recommendationGenerator(0,[]);
         });
       }
     };
