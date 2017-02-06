@@ -14,9 +14,11 @@
           pushNewProducts: Bool toggles incorporating products from the collaborative filter into recommendations
 */
 
-var MongoClient = require('mongodb').MongoClient
-    assert = require('assert')
-    chalk = require('chalk');
+var MongoClient = require('mongodb').MongoClient,
+    assert = require('assert'),
+    chalk = require('chalk'),
+    collab = require('./collabFilter/collabFilter.js');
+
 
 module.exports = function recommender (parameters) {
 
@@ -369,16 +371,19 @@ module.exports = function recommender (parameters) {
           // Use percentages to limit the number of products fetched for each valid cluster
           var col = db.collection(productCollection);
           var productStore = [];
+          var collabProductFlag = false; //Toggled true when products have been collected from the collaborative filter
           function recommendationGenerator(i, products){
             if (i < clusterCategories.length) {
               var cluster = clusterCategories[i];
               var clusterPercentage = categoryClusters[i].percentage;
               var limit = Math.round(noProductsToReturn * (parseFloat(clusterPercentage) / 100.0));
 
-              if (pushNewProducts && typeof pushNewProducts !== 'undefined') {
+              if (pushNewProducts && typeof pushNewProducts !== 'undefined' && noProductsToReturn >= 10 && !collabProductFlag) {
+                collabProductFlag = true; // Set Flag
                 noNewProducts = (noProductsToReturn * newProductPercentage);
                 var limit = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(clusterPercentage) / 100.0));
                 // Pull in new products here!
+                console.log(collab());
               }
 
               // !Solved 5th Feb - Unable to handle empty sets resulting in returning less products than requested
