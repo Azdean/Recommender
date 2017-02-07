@@ -382,26 +382,48 @@ module.exports = function recommender (parameters) {
           var productStore = [];
           var collabProductFlag = false; //Toggled true when products have been collected from the collaborative filter
 
-          function collaborativeFilter(flag) {
+          function collaborativeFilter(flag, recommendation) {
             if (flag) {
-              recommendationGenerator(0,[]);
+              if (recommendation.recommendations.length) {
+                var recommendation = recommendation.recommendations[0].thing;
+                var noNewProducts = (noProductsToReturn * newProductPercentage);
+
+                col.find({'cat.catid': recommendation}).toArray(function(err, docs){
+                  var products = [];
+                  if (docs.length) {
+                    for (var x = 0; x < noNewProducts; x++) {
+                      var randomNo = (Math.floor(Math.random() * docs.length));
+                      var product = docs[randomNo];
+
+                      // Add product to output
+                      products.push(product);
+                    }
+                    // Push new product recommendation cluster to clusterCategories so it ends up in the output
+                    clusterCategories.push([recommendation]);
+                    // Move on to normal recommendations
+                    recommendationGenerator(0,products,noNewProducts);
+                  } else {
+                    recommendationGenerator(0,[],0);
+                  }
+                });
+              } else {
+                recommendationGenerator(0,[],0);
+              }
             } else {
               if (pushNewProducts && typeof pushNewProducts !== 'undefined' && noProductsToReturn >= 10 && !collabProductFlag) {
                 collabProductFlag = true; // Set Flag
-                noNewProducts = (noProductsToReturn * newProductPercentage);
-                // var limit = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(clusterPercentage) / 100.0));
                 // Pull in new products here!
                 collabFilter.getRecommendation(personID, collaborativeFilter);
               }
             }
           }
-          collaborativeFilter(false);
+          collaborativeFilter(false, []);
 
-          function recommendationGenerator(i, products){
+          function recommendationGenerator(i, products, noNewProducts){
             if (i < clusterCategories.length) {
               var cluster = clusterCategories[i];
               var clusterPercentage = categoryClusters[i].percentage;
-              var limit = Math.round(noProductsToReturn * (parseFloat(clusterPercentage) / 100.0));
+              var limit = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(clusterPercentage) / 100.0));
 
               // !Solved 5th Feb - Unable to handle empty sets resulting in returning less products than requested
               col.find({'cat.catid': {$all: cluster}}).toArray(function(err, docs){
@@ -436,7 +458,7 @@ module.exports = function recommender (parameters) {
                     // Reset the position of i due to the removal of the failed cluster
                     i = i - 1;
                   }
-                  recommendationGenerator((i+1), products);
+                  recommendationGenerator((i+1), products, noNewProducts);
               })
             } else {
               outputBuilder(products, clusterCategories);
