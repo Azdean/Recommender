@@ -17,8 +17,8 @@
 var MongoClient = require('mongodb').MongoClient,
     assert = require('assert'),
     chalk = require('chalk'),
-    collab = require('./collabFilter/collabFilter.js');
-
+    collab = require('./collabFilter/collabFilter.js'),
+    collabFilter = new collab();
 
 module.exports = function recommender (parameters) {
 
@@ -303,6 +303,15 @@ module.exports = function recommender (parameters) {
           }
         }
 
+        //Push categories to the collaborative filter
+        for (var i = 0; i < outputArray.length; i++) {
+          var categoryObject = outputArray[i];
+          for (var i = 0; i < categoryObject.length; i++) {
+            var category = categoryObject[i].cat;
+            collabFilter.addEvent(personID, category);
+          }
+        }
+
         // For each cluster add together all weight totals to get total cluster weight and build cluster object
         tempArray = [];
         for (var i = 0; i < outputArray.length; i++) {
@@ -372,19 +381,27 @@ module.exports = function recommender (parameters) {
           var col = db.collection(productCollection);
           var productStore = [];
           var collabProductFlag = false; //Toggled true when products have been collected from the collaborative filter
+
+          function collaborativeFilter(flag) {
+            if (flag) {
+              recommendationGenerator(0,[]);
+            } else {
+              if (pushNewProducts && typeof pushNewProducts !== 'undefined' && noProductsToReturn >= 10 && !collabProductFlag) {
+                collabProductFlag = true; // Set Flag
+                noNewProducts = (noProductsToReturn * newProductPercentage);
+                // var limit = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(clusterPercentage) / 100.0));
+                // Pull in new products here!
+                collabFilter.getRecommendation(personID, collaborativeFilter);
+              }
+            }
+          }
+          collaborativeFilter(false);
+
           function recommendationGenerator(i, products){
             if (i < clusterCategories.length) {
               var cluster = clusterCategories[i];
               var clusterPercentage = categoryClusters[i].percentage;
               var limit = Math.round(noProductsToReturn * (parseFloat(clusterPercentage) / 100.0));
-
-              if (pushNewProducts && typeof pushNewProducts !== 'undefined' && noProductsToReturn >= 10 && !collabProductFlag) {
-                collabProductFlag = true; // Set Flag
-                noNewProducts = (noProductsToReturn * newProductPercentage);
-                var limit = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(clusterPercentage) / 100.0));
-                // Pull in new products here!
-                console.log(collab());
-              }
 
               // !Solved 5th Feb - Unable to handle empty sets resulting in returning less products than requested
               col.find({'cat.catid': {$all: cluster}}).toArray(function(err, docs){
@@ -425,7 +442,6 @@ module.exports = function recommender (parameters) {
               outputBuilder(products, clusterCategories);
             }
           };
-          recommendationGenerator(0,[]);
         });
       }
     };
