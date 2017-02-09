@@ -361,8 +361,13 @@ module.exports = function recommender (parameters) {
     var output = {};
 
     output.basedOn = categoryClusters[0];
-    output.products = JSON.stringify(products);
+    // output.products = JSON.stringify(products);
+    output.products = [];
+    for (var i = 0; i < products.length; i++) {
+      var product = products[i];
 
+      output.products.push(product.n);
+    }
     console.log(output);
   }
   console.log('Iteration One');
