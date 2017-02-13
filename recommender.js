@@ -35,6 +35,7 @@ module.exports = function recommender (parameters) {
   var pushNewProducts = parameters.pushNewProducts || true;
   var newProductPercentage = parameters.newProductPercentage || 0.2;
   var debug = parameters.debug || false;
+  var misc = {};
   var items = [];
   console.time(chalk.bgWhite.black.bold('Execution time'));
 
@@ -386,7 +387,9 @@ module.exports = function recommender (parameters) {
 
           function collaborativeFilter(flag, recommendation) {
             if (flag) {
+              misc.CFRecommendation = recommendation; // Push recommendation to misc for debug output
               if (recommendation.recommendations.length) {
+                misc.CFRecommendation = recommendation; // Push recommendation to misc for debug output
                 var recommendation = recommendation.recommendations[0].thing;
                 var noNewProducts = (noProductsToReturn * newProductPercentage);
 
@@ -485,7 +488,11 @@ module.exports = function recommender (parameters) {
                   recommendationGenerator((i+1), products, noNewProducts);
               })
             } else {
-              outputBuilder(products, clusterCategories);
+              // Pass some variables through for debug mode
+              misc.categoryClusters = categoryClusters;
+              console.log(categoryClusters);
+              misc.noNewProducts = noNewProducts;
+              outputBuilder(products, clusterCategories, misc);
             }
           };
         });
@@ -497,7 +504,7 @@ module.exports = function recommender (parameters) {
     helpers.queryBuilder(categoryClusters);
   };
 
-  function outputBuilder(products, clusterCategories) {
+  function outputBuilder(products, clusterCategories, misc) {
     var output = {};
     var productNames = [];
 
@@ -512,25 +519,49 @@ module.exports = function recommender (parameters) {
     output.products = productNames;
 
     console.log(output);
-    // if (debug) {
-    //   console.log('-----------------------------------------------');
-    //   for (var i = 0; i < categoryClusters.length; i++) {
-    //     var cluster = categoryClusters[i];
-    //
-    //     console.log('-----');
-    //     console.log('Cluster: ' + (i+1));
-    //     var string = 'Cluster Categories: ';
-    //     for (var x = 0; x < clusterCategories[i].length; x++) {
-    //       var categories = clusterCategories[i][x];
-    //       string += (categories + ', ');
-    //     }
-    //     console.log(string);
-    //     console.log('Cluster Confidence Weight: ' + cluster.weight);
-    //     console.log('Cluster Confidence Percentage: ' + cluster.percentage + '%');
-    //     console.log('Number Of Products Recommended From This Cluster: ' + Math.round((noProductsToReturn - noNewProducts) * (parseFloat(cluster.percentage) / 100.0)));
-    //     console.log('-----');
-    //   }
-    // }
+    if (debug) {
+      console.log(chalk.yellow.bold('- - DEBUG OUTPUT - -'));
+      var totalOutput = 0;
+      for (var i = 0; i < misc.categoryClusters.length; i++) {
+        var cluster = misc.categoryClusters[i];
+
+        if(cluster.cluster.length !== clusterCategories[i].length){
+          console.log('Cluster: ' + (i+1));
+          var string = 'Cluster Categories: ';
+          for (var x = 0; x < clusterCategories[i].length; x++) {
+            var categories = clusterCategories[i][x];
+            string += (categories + ', ');
+          }
+          console.log(string);
+          console.log('Number Of Products Recommended From This Cluster: ' + misc.noNewProducts);
+          totalOutput += misc.noNewProducts;
+          console.log(chalk.yellow('Cluster Source: Collaborative Filter'));
+          console.log(chalk.yellow.bold('- - - - - - - - - - -'));
+        } else {
+          console.log('Cluster: ' + (i+1));
+          var string = 'Cluster Categories: ';
+          for (var x = 0; x < clusterCategories[i].length; x++) {
+            var categories = clusterCategories[i][x];
+            string += (categories + ', ');
+          }
+          console.log(string);
+          console.log('Cluster Confidence Weight: ' + cluster.weight);
+          console.log('Cluster Confidence Percentage: ' + cluster.percentage + '%');
+          var noProductsReturned = Math.round((noProductsToReturn - misc.noNewProducts) * (parseFloat(cluster.percentage) / 100.0));
+          totalOutput += noProductsReturned;
+          console.log('Number Of Products Recommended From This Cluster: ' + noProductsReturned);
+          console.log(chalk.yellow('Cluster Source: Propotional Representation Algorithm'));
+          console.log(chalk.yellow.bold('- - - - - - - - - - -'));
+        }
+      }
+      if(totalOutput !== noProductsToReturn){
+        console.log('Products recommended using backup item pool : ' + (noProductsToReturn - totalOutput));
+        console.log(chalk.cyan('Backup item pool sourced from previously ran queries, items can be from either the Collaborative Filter or previous successful clusters'));
+      }
+      console.log(chalk.cyan('Collaborative Filter Recommendations'));
+      console.log(misc.CFRecommendation);
+      console.log(chalk.yellow.bold('- - DEBUG OUTPUT - -'));
+    }
     console.timeEnd(chalk.bgWhite.black.bold('Execution time')); // Execution time
     process.exit(0); // Exit process
   }

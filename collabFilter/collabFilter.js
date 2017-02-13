@@ -28,6 +28,27 @@ module.exports = function() {
       action: 'likes',
       thing: 'history',
       expires_at: new Date(+new Date + 12096e5)
+    },
+    {
+      namespace: 'categories',
+      person: '00000000',
+      action: 'likes',
+      thing: 'horses',
+      expires_at: new Date(+new Date + 12096e5)
+    },
+    {
+      namespace: 'categories',
+      person: '00000000',
+      action: 'likes',
+      thing: 'horror',
+      expires_at: new Date(+new Date + 12096e5)
+    },
+    {
+      namespace: 'categories',
+      person: '00000000',
+      action: 'likes',
+      thing: 'children-fiction',
+      expires_at: new Date(+new Date + 12096e5)
     }
     ]);
   }
