@@ -39,3 +39,21 @@ can then be combined with the category to give a more targeted product recommend
 
 '573873c03412e8ed0bc2b0fe'
 56c4b2c97c52196340516161
+
+// useful code
+for (var i = 0; i < categoryClusters.length; i++) {
+  var cluster = categoryClusters[i];
+
+  console.log('-----');
+  console.log('Cluster: ' + (i+1));
+  var string = 'Cluster Categories: ';
+  for (var x = 0; x < clusterCategories[i].length; x++) {
+    var categories = clusterCategories[i][x];
+    string += (categories + ', ');
+  }
+  console.log(string);
+  console.log('Cluster Confidence Weight: ' + cluster.weight);
+  console.log('Cluster Confidence Percentage: ' + cluster.percentage + '%');
+  console.log('Number Of Products Recommended From This Cluster: ' + Math.round((noProductsToReturn - noNewProducts) * (parseFloat(cluster.percentage) / 100.0)));
+  console.log('-----');
+}

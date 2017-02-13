@@ -34,6 +34,7 @@ module.exports = function recommender (parameters) {
   var noProductsToReturn = parameters.noProductsToReturn || 10;
   var pushNewProducts = parameters.pushNewProducts || true;
   var newProductPercentage = parameters.newProductPercentage || 0.2;
+  var debug = parameters.debug || false;
   var items = [];
   console.time(chalk.bgWhite.black.bold('Execution time'));
 
@@ -380,6 +381,7 @@ module.exports = function recommender (parameters) {
           // Use percentages to limit the number of products fetched for each valid cluster
           var col = db.collection(productCollection);
           var productStore = [];
+          var collabProductStore = [];
           var collabProductFlag = false; //Toggled true when products have been collected from the collaborative filter
 
           function collaborativeFilter(flag, recommendation) {
@@ -397,7 +399,12 @@ module.exports = function recommender (parameters) {
 
                       // Add product to output
                       products.push(product);
+
+                      // Remove product pushed from results to prevent duplication
+                      docs.splice(randomNo, 1);
                     }
+                    // Push remaining products to the collabProductStore so that it can be used later
+                    collabProductStore.concat(docs);
                     // Push new product recommendation cluster to clusterCategories so it ends up in the output
                     clusterCategories.push([recommendation]);
                     // Move on to normal recommendations
@@ -434,20 +441,46 @@ module.exports = function recommender (parameters) {
                       var product = docs[randomNo];
 
                       // Add product to output
-                      products.push(product);
+                      if (typeof products !== 'undefined') {
+                        products.push(product);
+                      }
 
                       // Remove product from docs as we have used it
                       docs.splice(randomNo, 1);
                     }
                     // push remaining products to product store incase we need to use them later
-                    productStore.push(docs);
+                    productStore.concat(docs);
                   } else {
-                    // If the cluster returned a empty product set then we will use products from the previous clusters
-                    // !TODO Add code here to pull products from the product store OR use stored products from the collaborativeFilter instead of grabbing products
-                    // from the previous cluster
                     clusterCategories.splice(i, 1); // Remove failed cluster
-                    // Reset the position of i due to the removal of the failed cluster
-                    i = i - 1;
+                    // Grab products from the collabProductStore if available, back up to random products from other clusters
+
+                    for (var x = 0; x < limit; x++) {
+                      if (collabProductStore.length) {
+                        var randomNo = (Math.floor(Math.random() * collabProductStore.length));
+                        var product = collabProductStore[randomNo];
+
+                        // Add product to output
+                        products.push(product);
+
+                        // Remove product from docs as we have used it
+                        collabProductStore.splice(randomNo, 1);
+                      } else if(productStore.length) {
+                          var randomNo = (Math.floor(Math.random() * productStore.length));
+                          var product = productStore[randomNo];
+
+                          // Add product to output
+                          if (typeof products !== 'undefined') {
+                            products.push(product);
+                          }
+
+                          // Remove product from docs as we have used it
+                          productStore.splice(randomNo, 1);
+                      } else {
+                        // Reset the position of i and grab products from the last viable cluster
+                        i = i - 1;
+                        break;
+                      }
+                    }
                   }
                   recommendationGenerator((i+1), products, noNewProducts);
               })
@@ -478,8 +511,26 @@ module.exports = function recommender (parameters) {
     // output.products = JSON.stringify(products);
     output.products = productNames;
 
-    // console.log('-----------------------------------------------');
     console.log(output);
+    // if (debug) {
+    //   console.log('-----------------------------------------------');
+    //   for (var i = 0; i < categoryClusters.length; i++) {
+    //     var cluster = categoryClusters[i];
+    //
+    //     console.log('-----');
+    //     console.log('Cluster: ' + (i+1));
+    //     var string = 'Cluster Categories: ';
+    //     for (var x = 0; x < clusterCategories[i].length; x++) {
+    //       var categories = clusterCategories[i][x];
+    //       string += (categories + ', ');
+    //     }
+    //     console.log(string);
+    //     console.log('Cluster Confidence Weight: ' + cluster.weight);
+    //     console.log('Cluster Confidence Percentage: ' + cluster.percentage + '%');
+    //     console.log('Number Of Products Recommended From This Cluster: ' + Math.round((noProductsToReturn - noNewProducts) * (parseFloat(cluster.percentage) / 100.0)));
+    //     console.log('-----');
+    //   }
+    // }
     console.timeEnd(chalk.bgWhite.black.bold('Execution time')); // Execution time
     process.exit(0); // Exit process
   }
