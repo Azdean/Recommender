@@ -490,7 +490,6 @@ module.exports = function recommender (parameters) {
             } else {
               // Pass some variables through for debug mode
               misc.categoryClusters = categoryClusters;
-              console.log(categoryClusters);
               misc.noNewProducts = noNewProducts;
               outputBuilder(products, clusterCategories, misc);
             }
