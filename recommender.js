@@ -442,19 +442,10 @@ module.exports = function recommender (parameters) {
                     // push remaining products to product store incase we need to use them later
                     productStore.push(docs);
                   } else {
-                    // If the cluster returned a empty product set then we will use products from the previous clusters (We will filter in *new* products here too once implimented)
+                    // If the cluster returned a empty product set then we will use products from the previous clusters
+                    // !TODO Add code here to pull products from the product store OR use stored products from the collaborativeFilter instead of grabbing products
+                    // from the previous cluster
                     clusterCategories.splice(i, 1); // Remove failed cluster
-                    for (var x = 0; x < limit; x++) {
-                      var docs = productStore[(Math.floor(Math.random() * (i-1)))];
-                      var randomNo = (Math.floor(Math.random() * docs.length));
-                      var product = docs[randomNo];
-
-                      // Add product to output
-                      products.push(product);
-
-                      // Remove product from docs as we have used it
-                      docs.splice(randomNo, 1);
-                    }
                     // Reset the position of i due to the removal of the failed cluster
                     i = i - 1;
                   }
