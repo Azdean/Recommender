@@ -34,7 +34,7 @@ module.exports = function recommender (parameters) {
   var noProductsToReturn = parameters.noProductsToReturn || 10;
   var pushNewProducts = parameters.pushNewProducts || true;
   var newProductPercentage = parameters.newProductPercentage || 0.2;
-  var debug = parameters.debug || false;
+  var moreInfo = parameters.moreInfo || false;
   var misc = {};
   var items = [];
   console.time(chalk.bgWhite.black.bold('Execution time'));
@@ -356,18 +356,17 @@ module.exports = function recommender (parameters) {
               return;
           }
 
-          var clusterCategories = [];
-
+          // Create an array with the each clusters categories and assign a cluster id
           for (var i = 0; i < categoryClusters.length; i++) {
             var cluster = categoryClusters[i].cluster;
-            var categories = [];
+            categoryClusters[i].categories = [];
 
             for (var x = 0; x < cluster.length; x++) {
               var category = cluster[x].cat;
 
-              categories.push(category);
+              categoryClusters[i].id = 'PA' + i;
+              categoryClusters[i].categories.push(category);
             }
-            clusterCategories.push(categories);
           }
 
           // For the moment just take the first cluster and return matching items
@@ -387,9 +386,9 @@ module.exports = function recommender (parameters) {
 
           function collaborativeFilter(flag, recommendation) {
             if (flag) {
-              misc.CFRecommendation = recommendation; // Push recommendation to misc for debug output
+              misc.CFRecommendation = recommendation; // Push recommendation to misc for MoreInfo output
               if (recommendation.recommendations.length) {
-                misc.CFRecommendation = recommendation; // Push recommendation to misc for debug output
+                misc.CFRecommendation = recommendation; // Push recommendation to misc for MoreInfo output
                 var recommendation = recommendation.recommendations[0].thing;
                 var noNewProducts = (noProductsToReturn * newProductPercentage);
 
@@ -407,17 +406,24 @@ module.exports = function recommender (parameters) {
                       docs.splice(randomNo, 1);
                     }
                     // Push remaining products to the collabProductStore so that it can be used later
-                    collabProductStore.concat(docs);
+                    collabProductStore = docs;
                     // Push new product recommendation cluster to clusterCategories so it ends up in the output
-                    clusterCategories.push([recommendation]);
+                    categoryClusters.push({
+                      'cluster': [recommendation],
+                      'weight': null,
+                      'percentage': (newProductPercentage * 100),
+                      'categories': recommendation,
+                      'products': products,
+                      'id': 'CF0'
+                    });
                     // Move on to normal recommendations
-                    recommendationGenerator(0,products,noNewProducts);
+                    recommendationGenerator(0,products.length);
                   } else {
-                    recommendationGenerator(0,[],0);
+                    recommendationGenerator(0,0);
                   }
                 });
               } else {
-                recommendationGenerator(0,[],0);
+                recommendationGenerator(0,0);
               }
             } else {
               if (pushNewProducts && typeof pushNewProducts !== 'undefined' && noProductsToReturn >= 10 && !collabProductFlag) {
@@ -429,69 +435,85 @@ module.exports = function recommender (parameters) {
           }
           collaborativeFilter(false, []);
 
-          function recommendationGenerator(i, products, noNewProducts){
-            if (i < clusterCategories.length) {
-              var cluster = clusterCategories[i];
-              var clusterPercentage = categoryClusters[i].percentage;
-              var limit = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(clusterPercentage) / 100.0));
+          function recommendationGenerator(i, noNewProducts){
+            // For each cluster that doesn't already have products
+            if (i < categoryClusters.length) {
+              if(!('products' in categoryClusters[i])){
+                  var cluster    = categoryClusters[i];
+                  var categories = cluster.categories;
+                  var percentage = cluster.percentage;
+                  var limit      = Math.round((noProductsToReturn - noNewProducts) * (parseFloat(percentage) / 100.0));
+                  var iPos       = i; // To fix bug where i is not accessable in the callback function
+                  cluster.products = [];
 
-              // !Solved 5th Feb - Unable to handle empty sets resulting in returning less products than requested
-              col.find({'cat.catid': {$all: cluster}}).toArray(function(err, docs){
-                  // Grab a random selection of products from the returned product pool
-                  if (docs.length) {
-                    for (var x = 0; x < limit; x++) {
-                      var randomNo = (Math.floor(Math.random() * docs.length));
-                      var product = docs[randomNo];
-
-                      // Add product to output
-                      if (typeof products !== 'undefined') {
-                        products.push(product);
-                      }
-
-                      // Remove product from docs as we have used it
-                      docs.splice(randomNo, 1);
-                    }
-                    // push remaining products to product store incase we need to use them later
-                    productStore.concat(docs);
-                  } else {
-                    clusterCategories.splice(i, 1); // Remove failed cluster
-                    // Grab products from the collabProductStore if available, back up to random products from other clusters
-
-                    for (var x = 0; x < limit; x++) {
-                      if (collabProductStore.length) {
-                        var randomNo = (Math.floor(Math.random() * collabProductStore.length));
-                        var product = collabProductStore[randomNo];
+                  col.find({'cat.catid': {$all: categories}}).toArray(function(err, docs){
+                    // Grab a random selection of products from the returned product pool
+                    if (docs.length) {
+                      for (var x = 0; x < limit; x++) {
+                        var randomNo = (Math.floor(Math.random() * docs.length));
+                        var product = docs[randomNo];
 
                         // Add product to output
-                        products.push(product);
+                        cluster.products.push(product);
 
                         // Remove product from docs as we have used it
-                        collabProductStore.splice(randomNo, 1);
-                      } else if(productStore.length) {
-                          var randomNo = (Math.floor(Math.random() * productStore.length));
-                          var product = productStore[randomNo];
+                        docs.splice(randomNo, 1);
+                      }
+                      // push remaining products to product store incase we need to use them later
+                      var productStoreInput = [];
+                      for (var y = 0; y < docs.length; y++) {
+                        var product = docs[y];
+                        var idContainer = {};
 
-                          // Add product to output
-                          if (typeof products !== 'undefined') {
-                            products.push(product);
-                          }
+                        idContainer.id = cluster.id;
+                        idContainer.product = product;
+                        productStoreInput.push(idContainer);
+                      }
+                      productStore.concat(productStoreInput);
+                    } else {
+                        cluster.products = null; // Signify failed cluster
+                        // Grab products from the collabProductStore if available
+                        for (var x = 0; x < limit; x++) {
+                          if (collabProductStore.length) {
+                            var randomNo = (Math.floor(Math.random() * collabProductStore.length));
+                            var product = collabProductStore[randomNo];
 
-                          // Remove product from docs as we have used it
-                          productStore.splice(randomNo, 1);
-                      } else {
-                        // Reset the position of i and grab products from the last viable cluster
-                        i = i - 1;
-                        break;
+                            // Add product to output
+                            for (var i = 0; i < categoryClusters.length; i++) {
+                              var catCluster = categoryClusters[i];
+
+                              if(catCluster.id === 'CF0'){
+                                catCluster.products.push(product);
+                              }
+                            }
+                            // Remove product from store as we have used it
+                            collabProductStore.splice(randomNo, 1);
+                          } else if(productStore.length) {
+                            var randomNo          = (Math.floor(Math.random() * productStore.length));
+                            var product           = productStore[randomNo].product;
+                            var productClusterId  = productStore[randomNo].id;
+
+                            // Add product to output
+                            for (var i = 0; i < categoryClusters.length; i++) {
+                              var catCluster = categoryClusters[i];
+
+                              if(catCluster.id === productClusterId){
+                                catCluster.products.push(product);
+                              }
+                            }
+
+                            // Remove product from docs as we have used it
+                            productStore.splice(randomNo, 1);
+                        }
                       }
                     }
-                  }
-                  recommendationGenerator((i+1), products, noNewProducts);
-              })
+                    recommendationGenerator((iPos+1), noNewProducts);
+                  });
+              } else {
+                recommendationGenerator((iPos+1), noNewProducts);
+              }
             } else {
-              // Pass some variables through for debug mode
-              misc.categoryClusters = categoryClusters;
-              misc.noNewProducts = noNewProducts;
-              outputBuilder(products, clusterCategories, misc);
+              outputBuilder(categoryClusters);
             }
           };
         });
@@ -503,64 +525,63 @@ module.exports = function recommender (parameters) {
     helpers.queryBuilder(categoryClusters);
   };
 
-  function outputBuilder(products, clusterCategories, misc) {
-    var output = {};
-    var productNames = [];
+  function outputBuilder(categoryClusters) {
+    // If integrated into a larger system the categoryClusters object can be returned. However the following function prints the data out to the console.
 
-    output.basedOn = clusterCategories;
+    console.log(chalk.bgCyan.black('- - Recommended Products - -'));
+    for (var i = 0; i < categoryClusters.length; i++) {
+      var products = categoryClusters[i].products;
 
-    for (var i = 0; i < products.length; i++) {
-      var product = products[i];
-
-      productNames.push(product.n);
-    }
-    // output.products = JSON.stringify(products);
-    output.products = productNames;
-
-    console.log(output);
-    if (debug) {
-      console.log(chalk.yellow.bold('- - DEBUG OUTPUT - -'));
-      var totalOutput = 0;
-      for (var i = 0; i < misc.categoryClusters.length; i++) {
-        var cluster = misc.categoryClusters[i];
-
-        if(cluster.cluster.length !== clusterCategories[i].length){
-          console.log('Cluster: ' + (i+1));
-          var string = 'Cluster Categories: ';
-          for (var x = 0; x < clusterCategories[i].length; x++) {
-            var categories = clusterCategories[i][x];
-            string += (categories + ', ');
-          }
-          console.log(string);
-          console.log('Number Of Products Recommended From This Cluster: ' + misc.noNewProducts);
-          totalOutput += misc.noNewProducts;
-          console.log(chalk.yellow('Cluster Source: Collaborative Filter'));
-          console.log(chalk.yellow.bold('- - - - - - - - - - -'));
-        } else {
-          console.log('Cluster: ' + (i+1));
-          var string = 'Cluster Categories: ';
-          for (var x = 0; x < clusterCategories[i].length; x++) {
-            var categories = clusterCategories[i][x];
-            string += (categories + ', ');
-          }
-          console.log(string);
-          console.log('Cluster Confidence Weight: ' + cluster.weight);
-          console.log('Cluster Confidence Percentage: ' + cluster.percentage + '%');
-          var noProductsReturned = Math.round((noProductsToReturn - misc.noNewProducts) * (parseFloat(cluster.percentage) / 100.0));
-          totalOutput += noProductsReturned;
-          console.log('Number Of Products Recommended From This Cluster: ' + noProductsReturned);
-          console.log(chalk.yellow('Cluster Source: Propotional Representation Algorithm'));
-          console.log(chalk.yellow.bold('- - - - - - - - - - -'));
+      if(products){
+        for (var x = 0; x < products.length; x++) {
+          var product = products[x];
+          console.log(chalk.cyan(product.n));
         }
       }
-      if(totalOutput !== noProductsToReturn){
-        console.log('Products recommended using backup item pool : ' + (noProductsToReturn - totalOutput));
-        console.log(chalk.cyan('Backup item pool sourced from previously ran queries, items can be from either the Collaborative Filter or previous successful clusters'));
-      }
-      console.log(chalk.cyan('Collaborative Filter Recommendations'));
-      console.log(misc.CFRecommendation);
-      console.log(chalk.yellow.bold('- - DEBUG OUTPUT - -'));
     }
+
+    console.log(chalk.bgGreen.black('- - Based on Clusters - -'));
+    for (var i = 0; i < categoryClusters.length; i++) {
+      var categories = categoryClusters[i].categories;
+
+      console.log(chalk.green(JSON.stringify(categories, null, 1)));
+    }
+
+    if(moreInfo){
+      console.log(chalk.bgYellow.black('- - More Info - -'));
+      for (var i = 0; i < categoryClusters.length; i++) {
+        var cluster = categoryClusters[i];
+        console.log(chalk.yellow('Cluster ID: ') + cluster.id);
+        console.log(chalk.yellow('Cluster Type: ') + ((cluster.id.search('CF') ? 'Proportional Representation Algorithm' : 'Collaborative Filter')));
+
+        var categories = '';
+        if(typeof cluster.categories !== 'string'){
+          for (var x = 0; x < cluster.categories.length; x++) {
+            categories += '[' + cluster.categories[x] + '], ';
+          }
+        } else {
+            categories = cluster.categories;
+        }
+        console.log(chalk.yellow('Cluster Categories: ') + '[' + categories + ']');
+
+        console.log(chalk.yellow('Cluster Weight: ') + cluster.weight);
+        console.log(chalk.yellow('Cluster Confidence Percentage: ') + cluster.percentage + '%');
+        if(cluster.products === null){
+            console.log(chalk.yellow('Number of products recommended from this cluster:') + ' 0');
+            console.log(chalk.yellow('Recommended products belonging to this cluster:') + ' None');
+            console.log(chalk.red('Cluster returned no viable products'));
+        } else {
+          console.log(chalk.yellow('Number of products recommended from this cluster: ') + cluster.products.length);
+          var productsRecommended = '';
+          for (var x = 0; x < cluster.products.length; x++) {
+            productsRecommended += '[' + cluster.products[x].n + '], ';
+          }
+          console.log(chalk.yellow('Recommended products belonging to this cluster: ') + productsRecommended);
+        }
+        console.log(chalk.yellow('- - - - - - -'));
+      }
+    }
+
     console.timeEnd(chalk.bgWhite.black.bold('Execution time')); // Execution time
     process.exit(0); // Exit process
   }

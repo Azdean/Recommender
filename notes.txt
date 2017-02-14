@@ -57,3 +57,12 @@ for (var i = 0; i < categoryClusters.length; i++) {
   console.log('Number Of Products Recommended From This Cluster: ' + Math.round((noProductsToReturn - noNewProducts) * (parseFloat(cluster.percentage) / 100.0)));
   console.log('-----');
 }
+
+-------------
+
+else {
+//   // Pass some variables through for MoreInfo mode
+//   misc.categoryClusters = categoryClusters;
+//   misc.noNewProducts = noNewProducts;
+//   outputBuilder(products, clusterCategories, misc);
+// }  
