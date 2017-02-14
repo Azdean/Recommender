@@ -557,12 +557,14 @@ module.exports = function recommender (parameters) {
         var categories = '';
         if(typeof cluster.categories !== 'string'){
           for (var x = 0; x < cluster.categories.length; x++) {
-            categories += '[' + cluster.categories[x] + '], ';
+            if(cluster.categories[x]){
+              categories += '[' + cluster.categories[x] + '], ';
+            }
           }
         } else {
             categories = cluster.categories;
         }
-        console.log(chalk.yellow('Cluster Categories: ') + '[' + categories + ']');
+        console.log(chalk.yellow('Cluster Categories: ') + categories);
 
         console.log(chalk.yellow('Cluster Weight: ') + cluster.weight);
         console.log(chalk.yellow('Cluster Confidence Percentage: ') + cluster.percentage + '%');
@@ -575,6 +577,9 @@ module.exports = function recommender (parameters) {
           var productsRecommended = '';
           for (var x = 0; x < cluster.products.length; x++) {
             productsRecommended += '[' + cluster.products[x].n + '], ';
+          }
+          if (!productsRecommended) {
+            productsRecommended = 'None';
           }
           console.log(chalk.yellow('Recommended products belonging to this cluster: ') + productsRecommended);
         }
