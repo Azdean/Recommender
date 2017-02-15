@@ -567,7 +567,7 @@ module.exports = function recommender (parameters) {
         console.log(chalk.yellow('Cluster Categories: ') + categories);
 
         console.log(chalk.yellow('Cluster Weight: ') + cluster.weight);
-        console.log(chalk.yellow('Cluster Confidence Percentage: ') + cluster.percentage + '%');
+        console.log(chalk.yellow('Cluster Output Percentage: ') + cluster.percentage + '%');
         if(cluster.products === null){
             console.log(chalk.yellow('Number of products recommended from this cluster:') + ' 0');
             console.log(chalk.yellow('Recommended products belonging to this cluster:') + ' None');
@@ -585,6 +585,9 @@ module.exports = function recommender (parameters) {
         }
         console.log(chalk.yellow('- - - - - - -'));
       }
+      console.log(chalk.bgMagenta.white('- - Collaborative Filter Output - -'));
+      console.log(misc.CFRecommendation);
+      console.log(chalk.magenta('- - - - - - -'));
     }
 
     console.timeEnd(chalk.bgWhite.black.bold('Execution time')); // Execution time
