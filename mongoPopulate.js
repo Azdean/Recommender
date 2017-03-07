@@ -33,7 +33,7 @@ fs.readFile('/home/azdean/Documents/db/products_bookoutlet.txt', 'utf8', functio
   var data = JSON.parse(data);
 
   //Connect to MongoDB
-  var url = 'mongodb://localhost:27017/recommender';
+  var url = 'mongodb://localhost:27017/recommendation';
   MongoClient.connect(url, function(err, db) {
     if(!err){
         console.log("Connected correctly to server.");

@@ -368,7 +368,6 @@ module.exports = function recommender (parameters) {
               categoryClusters[i].categories.push(category);
             }
           }
-
           // For the moment just take the first cluster and return matching items
           // var col = db.collection(productCollection);
           // col.find({'cat.catid': {$all: clusterCategories[0]}}).toArray(function(err, docs){
