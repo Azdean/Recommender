@@ -61,6 +61,21 @@ module.exports = function recommender (parameters) {
         return;
       }
 
+      // Loop through signals and add purchase signal items to product exclude
+      for (var i = 0; i < docs.length; i++) {
+        var signal = docs[i].signal;
+
+        if (signal.type === 'pu') {
+          for (var x = 0; x < signal.cart.p.length; x++) {
+            var product = signal.cart.p[x];
+
+            if (productsToExclude.indexOf(product.prid) === -1) {
+              productsToExclude.push(product.prid);
+            }
+          }
+        }
+      }
+
       /* LOOP through signals and remove products which match the exclude criteria */
       for(var i=0; i < docs.length; i++){
         var signal = docs[i].signal;
@@ -72,14 +87,6 @@ module.exports = function recommender (parameters) {
           var removeFlag = false;
           // Loop through excluded products and compare to the current item
           for(var y=0; y < productsToExclude.length; y++){
-            if(prid === productsToExclude[y]){
-              // Remove product
-              signal.cart.p.splice(x, 1);
-              // Drop back index by one place to ensure we cover every item after removing a item from the array
-              x = x - 1;
-              // Set remove flag
-              removeFlag = true;
-            } else {
               // Loop through categories and compare to excluded categories
               for(var a=0; a < cat.length; a++){
                 // Loop through excluded category list and compare
@@ -94,7 +101,6 @@ module.exports = function recommender (parameters) {
                   }
                 }
               }
-            }
           }
           if(!removeFlag){
             var item = {};
@@ -446,18 +452,61 @@ module.exports = function recommender (parameters) {
                   cluster.products = [];
 
                   col.find({'cat.catid': {$all: categories}}).toArray(function(err, docs){
-                    // Grab a random selection of products from the returned product pool
-                    if (docs.length) {
+                    if (docs.length) { // initial length check
                       for (var x = 0; x < limit; x++) {
-                        var randomNo = (Math.floor(Math.random() * docs.length));
-                        var product = docs[randomNo];
+                        if (docs.length) {
+                          var randomNo = (Math.floor(Math.random() * docs.length));
+                          var product = docs[randomNo];
 
-                        // Add product to output
-                        cluster.products.push(product);
+                          if (productsToExclude.indexOf(product.prid) === -1) {
+                            // Add product to output
+                            cluster.products.push(product);
 
-                        // Remove product from docs as we have used it
-                        docs.splice(randomNo, 1);
+                            // Remove product from docs as we have used it
+                            docs.splice(randomNo, 1);
+                          } else {
+                            // Remove product from docs as it is an excluded
+                            docs.splice(randomNo, 1);
+                            x = x - 1; // Reset iterator
+                          }
+                        } else {
+                          cluster.products = null; // Signify failed cluster
+                          // Grab products from the collabProductStore if available
+                          for (var x = 0; x < limit; x++) {
+                            if (collabProductStore.length) {
+                              var randomNo = (Math.floor(Math.random() * collabProductStore.length));
+                              var product = collabProductStore[randomNo];
+
+                              // Add product to output
+                              for (var i = 0; i < categoryClusters.length; i++) {
+                                var catCluster = categoryClusters[i];
+
+                                if(catCluster.id === 'CF0'){
+                                  catCluster.products.push(product);
+                                }
+                              }
+                              // Remove product from store as we have used it
+                              collabProductStore.splice(randomNo, 1);
+                            } else if(productStore.length) {
+                              var randomNo          = (Math.floor(Math.random() * productStore.length));
+                              var product           = productStore[randomNo].product;
+                              var productClusterId  = productStore[randomNo].id;
+
+                              // Add product to output
+                              for (var i = 0; i < categoryClusters.length; i++) {
+                                var catCluster = categoryClusters[i];
+
+                                if(catCluster.id === productClusterId){
+                                  catCluster.products.push(product);
+                                }
+                              }
+
+                              // Remove product from docs as we have used it
+                              productStore.splice(randomNo, 1);
+                          }
+                        }
                       }
+
                       // push remaining products to product store incase we need to use them later
                       var productStoreInput = [];
                       for (var y = 0; y < docs.length; y++) {
@@ -469,7 +518,8 @@ module.exports = function recommender (parameters) {
                         productStoreInput.push(idContainer);
                       }
                       productStore.concat(productStoreInput);
-                    } else {
+                    }
+                  } else {
                         cluster.products = null; // Signify failed cluster
                         // Grab products from the collabProductStore if available
                         for (var x = 0; x < limit; x++) {
@@ -506,6 +556,7 @@ module.exports = function recommender (parameters) {
                         }
                       }
                     }
+
                     recommendationGenerator((iPos+1), noNewProducts);
                   });
               } else {
