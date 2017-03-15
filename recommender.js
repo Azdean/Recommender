@@ -44,75 +44,99 @@ module.exports = function recommender (parameters) {
   } else {
     return chalk.red('An error has occured: Please supply a PersonID parameter.');
   }
-
   console.log(chalk.green('Fetching recommendations for user: ' + personID));
-  /* Connect to database*/
-  MongoClient.connect(databaseConnectionURL, function(err, db) {
-    if(err){
-        console.log(chalk.red("An error occured: Unable to connect to MongoDB server: " + err));
-        return;
-    }
 
-    /* Fetch signal data for personID */
-    var col = db.collection(signalCollection);
-    col.find({'person_id': personID}).toArray(function(err, docs){
+  function historyScanner() {
+    MongoClient.connect(databaseConnectionURL, function(err, db) {
       if(err){
-        console.log(chalk.red('An error has occured: ' + err));
-        return;
+          console.log(chalk.red("An error occured: Unable to connect to MongoDB server: " + err));
+          return;
       }
 
-      // Loop through signals and add purchase signal items to product exclude
-      for (var i = 0; i < docs.length; i++) {
-        var signal = docs[i].signal;
-
-        if (signal.type === 'pu') {
-          for (var x = 0; x < signal.cart.p.length; x++) {
-            var product = signal.cart.p[x];
-
-            if (productsToExclude.indexOf(product.prid) === -1) {
-              productsToExclude.push(product.prid);
-            }
-          }
+      db.collection('scan_history').find({'person_id': personID}).toArray(function(err, docs){
+        if(err){
+          console.log(chalk.red('An error has occured: ' + err));
+          return;
         }
-      }
 
-      /* LOOP through signals and remove products which match the exclude criteria */
-      for(var i=0; i < docs.length; i++){
-        var signal = docs[i].signal;
+        if(docs.length){
+          lastUpdate = docs[0].date;
+        }
 
-        // Loop through cart items
-        for(var x=0; x < signal.cart.p.length; x++){
-          var prid = signal.cart.p[x].prid;
-          var cat = signal.cart.p[x].cat;
-          var removeFlag = false;
-          // Loop through excluded products and compare to the current item
-          for(var y=0; y < productsToExclude.length; y++){
-              // Loop through categories and compare to excluded categories
-              for(var a=0; a < cat.length; a++){
-                // Loop through excluded category list and compare
-                for(var b=0; b < categoriesToExclude.length; b++){
-                  if(cat[a] === categoriesToExclude[b]){
-                    // Remove product
-                    signal.cart.p.splice(x, 1);
-                    // Drop back index by one place to ensure we cover every item after removing a item from the array
-                    x = x - 1;
-                    // Set remove flag
-                    removeFlag = true;
+        /* Fetch signal data for personID */
+        var signalCol = db.collection(signalCollection);
+        signalCol.find({'person_id': personID}).toArray(function(err, docs){
+          if(err){
+            console.log(chalk.red('An error has occured: ' + err));
+            return;
+          }
+
+          // Loop through signals and do the following
+          // * Add purchase signal items to product exclude
+          // * Add product views that have not been recorded to the product_view collection
+          // * Record the current date to the scan history collection
+          // * Remove products that are being ignored (Due to their category)
+          for (var i = 0; i < docs.length; i++) {
+            var signal = docs[i].signal;
+
+            for (var x = 0; x < signal.cart.p.length; x++) {
+              var product = signal.cart.p[x];
+              var removeFlag = false;
+
+              if (signal.type === 'pu') { // If purchase signal push item to the exclude list
+                if (productsToExclude.indexOf(product.prid) === -1) {
+                  productsToExclude.push(product.prid);
+                }
+              } else {
+                // Loop through categories and compare to excluded categories
+                for(var a=0; a < product.cat.length; a++){
+                  // Loop through excluded category list and compare
+                  for(var b=0; b < categoriesToExclude.length; b++){
+                    if(product.cat[a] === categoriesToExclude[b]){
+                      // Remove product
+                      signal.cart.p.splice(x, 1);
+                      // Drop back index by one place to ensure we cover every item after removing a item from the array
+                      x = x - 1;
+                      // Set remove flag
+                      removeFlag = true;
+                    }
+                  }
+                }
+                if(!removeFlag){
+                  var item = {};
+                  item.dt = signal.dt;
+                  item.p = signal.cart.p[x];
+                  items.push(item);
+
+                  if(typeof lastUpdate !== 'undefined'){
+                    if(signal.dt > lastUpdate){
+                      db.collection('product_view').update({'prid': item.p.prid}, {$inc:{'count': 1}});
+                    }
+                  } else {
+                    db.collection('product_view').update(
+                      {
+                        'prid': item.p.prid
+                      },
+                      {
+                        $set:{'prid': item.p.prid},
+                        $inc:{'count': 1}
+                      },
+                      {
+                        upsert: true
+                      }
+                    );
                   }
                 }
               }
+            }
           }
-          if(!removeFlag){
-            var item = {};
-            item.dt = signal.dt;
-            item.p = signal.cart.p[x];
-            items.push(item);
-          }
-        }
-      } // Signal Loop
-       analysisEngine (items);
+            db.collection('scan_history').update({'person_id': personID}, {$set: {'person_id': personID,'date': (new Date())}}, {upsert: true});
+            analysisEngine(items);
+        });
+      });
     });
-  });
+  }
+  historyScanner();
 
   function analysisEngine (items) {
     var filteredItems = [];
@@ -451,6 +475,26 @@ module.exports = function recommender (parameters) {
                   var iPos       = i; // To fix bug where i is not accessable in the callback function
                   cluster.products = [];
 
+                  col.aggregate([
+                    {
+                      $match: {'cat.catid': {$all: categories}}
+                    },
+                    {
+                      $lookup: {
+                        from: "product_view",
+                        localField: "prid",
+                        foreignField: "prid",
+                        as: "count"
+                      }
+                    }
+                  ]).toArray(function(err, docs){
+                    if (err) {
+                      console.log(err);
+                    } else {
+                      console.log(docs[0]);
+                    }
+                  }); // This code will replace the col.find on line 498
+
                   col.find({'cat.catid': {$all: categories}}).toArray(function(err, docs){
                     if (docs.length) { // initial length check
                       for (var x = 0; x < limit; x++) {
@@ -563,7 +607,7 @@ module.exports = function recommender (parameters) {
                 recommendationGenerator((iPos+1), noNewProducts);
               }
             } else {
-              outputBuilder(categoryClusters);
+              // outputBuilder(categoryClusters);
             }
           };
         });

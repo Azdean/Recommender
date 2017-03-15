@@ -38,7 +38,7 @@ can then be combined with the category to give a more targeted product recommend
 // RETURN OutputArray
 
 '573873c03412e8ed0bc2b0fe'
-56c4b2c97c52196340516161
+56c4b2c97c52196340516161 - Fix 11 recommendation bug
 
 // useful code
 for (var i = 0; i < categoryClusters.length; i++) {
