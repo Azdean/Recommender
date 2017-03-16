@@ -20,7 +20,7 @@ var MongoClient = require('mongodb').MongoClient,
     collab = require('./collabFilter/collabFilter.js'),
     collabFilter = new collab();
 
-module.exports = function recommender (parameters) {
+module.exports = function recommender (parameters, next) {
 
   /* SETUP */
   /* Assign running parameters from function parameters or set default values */
@@ -89,19 +89,29 @@ module.exports = function recommender (parameters) {
                 }
               } else {
                 // Loop through categories and compare to excluded categories
-                for(var a=0; a < product.cat.length; a++){
-                  // Loop through excluded category list and compare
-                  for(var b=0; b < categoriesToExclude.length; b++){
-                    if(product.cat[a] === categoriesToExclude[b]){
-                      // Remove product
-                      signal.cart.p.splice(x, 1);
-                      // Drop back index by one place to ensure we cover every item after removing a item from the array
-                      x = x - 1;
-                      // Set remove flag
-                      removeFlag = true;
+                if(typeof product.cat !== 'undefined'){
+                  for(var a=0; a < product.cat.length; a++){
+                    // Loop through excluded category list and compare
+                    for(var b=0; b < categoriesToExclude.length; b++){
+                      if(product.cat[a] === categoriesToExclude[b]){
+                        // Remove product
+                        signal.cart.p.splice(x, 1);
+                        // Drop back index by one place to ensure we cover every item after removing a item from the array
+                        x = x - 1;
+                        // Set remove flag
+                        removeFlag = true;
+                      }
                     }
                   }
+                } else {
+                  // Remove product
+                  signal.cart.p.splice(x, 1);
+                  // Drop back index by one place to ensure we cover every item after removing a item from the array
+                  x = x - 1;
+                  // Set remove flag
+                  removeFlag = true;
                 }
+
                 if(!removeFlag){
                   var item = {};
                   item.dt = signal.dt;
@@ -312,7 +322,7 @@ module.exports = function recommender (parameters) {
           outputCluster = helpers.sorter(outputCluster);
           tempArray.push(outputCluster);
         }
-        // Assign tempArray values to the outputr array
+        // Assign tempArray values to the output array
         outputArray = tempArray;
 
         // Loop through and remove similar clusters based on key categories (if two or more of the three categories that provide the most weight to the cluster are the same remove)
@@ -337,9 +347,9 @@ module.exports = function recommender (parameters) {
 
         //Push categories to the collaborative filter
         for (var i = 0; i < outputArray.length; i++) {
-          var categoryObject = outputArray[i];
-          for (var i = 0; i < categoryObject.length; i++) {
-            var category = categoryObject[i].cat;
+          var cluster = outputArray[i];
+          for (var x = 0; x < cluster.length; x++) {
+            var category = cluster[x].cat;
             collabFilter.addEvent(personID, category);
           }
         }
@@ -421,18 +431,50 @@ module.exports = function recommender (parameters) {
                 var recommendation = recommendation.recommendations[0].thing;
                 var noNewProducts = (noProductsToReturn * newProductPercentage);
 
-                col.find({'cat.catid': recommendation}).toArray(function(err, docs){
+                col.aggregate([
+                  {
+                    $match: {'cat.catid': recommendation}
+                  },
+                  {
+                    $lookup: {
+                      from: "product_view",
+                      localField: "prid",
+                      foreignField: "prid",
+                      as: "count"
+                    }
+                  },
+                  {
+                    $sort: {
+                      'count.count' : -1
+                    }
+                  }
+                ]).toArray(function(err, docs){
                   var products = [];
                   if (docs.length) {
                     for (var x = 0; x < noNewProducts; x++) {
-                      var randomNo = (Math.floor(Math.random() * docs.length));
-                      var product = docs[randomNo];
+                      for (var i = 0; i < docs.length; i++) {
+                        var product = docs[i];
+                        var views = product.count[0];
 
-                      // Add product to output
-                      products.push(product);
+                        if (typeof views !== 'undefined' && productsToExclude.indexOf(product.prid) === -1) {
+                          // Add product to output
+                          products.push(product);
 
-                      // Remove product pushed from results to prevent duplication
-                      docs.splice(randomNo, 1);
+                          // Remove product pushed from results to prevent duplication
+                          docs.splice(randomNo, 1);
+                          break;
+                        } else {
+                          var randomNo = (Math.floor(Math.random() * docs.length));
+                          var product = docs[randomNo];
+
+                          // Add product to output
+                          products.push(product);
+
+                          // Remove product pushed from results to prevent duplication
+                          docs.splice(randomNo, 1);
+                          break;
+                        }
+                      }
                     }
                     // Push remaining products to the collabProductStore so that it can be used later
                     collabProductStore = docs;
@@ -475,6 +517,7 @@ module.exports = function recommender (parameters) {
                   var iPos       = i; // To fix bug where i is not accessable in the callback function
                   cluster.products = [];
 
+                  // Fetch products that match the cluster, aggregate with the item view collection and sort by the number of views
                   col.aggregate([
                     {
                       $match: {'cat.catid': {$all: categories}}
@@ -486,67 +529,125 @@ module.exports = function recommender (parameters) {
                         foreignField: "prid",
                         as: "count"
                       }
+                    },
+                    {
+                      $sort: {
+                        'count.count' : -1
+                      }
                     }
                   ]).toArray(function(err, docs){
-                    if (err) {
-                      console.log(err);
-                    } else {
-                      console.log(docs[0]);
-                    }
-                  }); // This code will replace the col.find on line 498
-
-                  col.find({'cat.catid': {$all: categories}}).toArray(function(err, docs){
                     if (docs.length) { // initial length check
                       for (var x = 0; x < limit; x++) {
                         if (docs.length) {
-                          var randomNo = (Math.floor(Math.random() * docs.length));
-                          var product = docs[randomNo];
+                          for (var i = 0; i < docs.length; i++) { // Loop through the products
+                            var product = docs[i];
+                            var views = product.count[0];
 
-                          if (productsToExclude.indexOf(product.prid) === -1) {
-                            // Add product to output
-                            cluster.products.push(product);
+                            // If the product has a view count and isn't in the exclude list then we will recommend it
+                            if(typeof views !== 'undefined' && productsToExclude.indexOf(product.prid) === -1){
+                              // Add product to output
+                              cluster.products.push(product);
 
-                            // Remove product from docs as we have used it
-                            docs.splice(randomNo, 1);
-                          } else {
-                            // Remove product from docs as it is an excluded
-                            docs.splice(randomNo, 1);
-                            x = x - 1; // Reset iterator
+                              // Remove product from docs as we have used it
+                              docs.splice(i, 1);
+                              break; // exit the loop
+                            } else {
+                              // if the product has no view count then none of the remaining products have views as this product are sorted by views
+                              // use random product selection instead
+                              var randomNo = (Math.floor(Math.random() * docs.length));
+                              var product = docs[randomNo];
+
+                              if (productsToExclude.indexOf(product.prid) === -1) {
+                                // Add product to output
+                                cluster.products.push(product);
+
+                                // Remove product from docs as we have used it
+                                docs.splice(randomNo, 1);
+                                break; // exit the loop
+                              } else {
+                                // Remove product from docs as it is an excluded
+                                docs.splice(randomNo, 1);
+                                i = i - 1; // Reset iterator
+                              }
+                            }
                           }
                         } else {
                           cluster.products = null; // Signify failed cluster
                           // Grab products from the collabProductStore if available
                           for (var x = 0; x < limit; x++) {
                             if (collabProductStore.length) {
-                              var randomNo = (Math.floor(Math.random() * collabProductStore.length));
-                              var product = collabProductStore[randomNo];
+                              for (var i = 0; i < collabProductStore.length; i++) {
+                                var product = collabProductStore[i];
+                                var views = product.count[0];
 
-                              // Add product to output
-                              for (var i = 0; i < categoryClusters.length; i++) {
-                                var catCluster = categoryClusters[i];
+                                if (typeof views !== 'undefined' && productsToExclude.indexOf(product.prid) === -1) {
+                                  // Add product to output
+                                  for (var x = 0; x < categoryClusters.length; x++) {
+                                    var catCluster = categoryClusters[x];
+                                    console.log(catCluster); //TODO: ERROR HERE SOMEWHERE!
 
-                                if(catCluster.id === 'CF0'){
-                                  catCluster.products.push(product);
+                                    if(catCluster.id === 'CF0'){
+                                      catCluster.products.push(product);
+                                    }
+                                  }
+                                  // Remove product from store as we have used it
+                                  collabProductStore.splice(x, 1);
+                                  break;
+                                } else {
+                                  var randomNo = (Math.floor(Math.random() * collabProductStore.length));
+                                  var product = collabProductStore[randomNo];
+
+                                  // Add product to output
+                                  for (var i = 0; i < categoryClusters.length; i++) {
+                                    var catCluster = categoryClusters[i];
+
+                                    if(catCluster.id === 'CF0'){
+                                      catCluster.products.push(product);
+                                    }
+                                  }
+                                  // Remove product from store as we have used it
+                                  collabProductStore.splice(randomNo, 1);
+                                  break;
                                 }
                               }
-                              // Remove product from store as we have used it
-                              collabProductStore.splice(randomNo, 1);
+
                             } else if(productStore.length) {
-                              var randomNo          = (Math.floor(Math.random() * productStore.length));
-                              var product           = productStore[randomNo].product;
-                              var productClusterId  = productStore[randomNo].id;
+                              for (var i = 0; i < productStore.length; i++) {
+                                var product = productStore[i];
+                                var views = product.count[0];
 
-                              // Add product to output
-                              for (var i = 0; i < categoryClusters.length; i++) {
-                                var catCluster = categoryClusters[i];
+                                if (typeof views !== 'undefined' && productsToExclude.indexOf(product.prid) === -1) {
+                                  // Add product to output
+                                  for (var x = 0; x < categoryClusters.length; x++) {
+                                    var catCluster = categoryClusters[x];
 
-                                if(catCluster.id === productClusterId){
-                                  catCluster.products.push(product);
+                                    if(catCluster.id === productClusterId){
+                                      catCluster.products.push(product);
+                                    }
+                                  }
+
+                                  // Remove product from docs as we have used it
+                                  productStore.splice(x, 1);
+                                  break;
+                                } else {
+                                  var randomNo          = (Math.floor(Math.random() * productStore.length));
+                                  var product           = productStore[randomNo].product;
+                                  var productClusterId  = productStore[randomNo].id;
+
+                                  // Add product to output
+                                  for (var i = 0; i < categoryClusters.length; i++) {
+                                    var catCluster = categoryClusters[i];
+
+                                    if(catCluster.id === productClusterId){
+                                      catCluster.products.push(product);
+                                    }
+                                  }
+
+                                  // Remove product from docs as we have used it
+                                  productStore.splice(randomNo, 1);
+                                  break;
                                 }
                               }
-
-                              // Remove product from docs as we have used it
-                              productStore.splice(randomNo, 1);
                           }
                         }
                       }
@@ -561,9 +662,9 @@ module.exports = function recommender (parameters) {
                         idContainer.product = product;
                         productStoreInput.push(idContainer);
                       }
-                      productStore.concat(productStoreInput);
-                    }
-                  } else {
+                        productStore.concat(productStoreInput);
+                      }
+                    } else {
                         cluster.products = null; // Signify failed cluster
                         // Grab products from the collabProductStore if available
                         for (var x = 0; x < limit; x++) {
@@ -607,7 +708,8 @@ module.exports = function recommender (parameters) {
                 recommendationGenerator((iPos+1), noNewProducts);
               }
             } else {
-              // outputBuilder(categoryClusters);
+              // next();
+              outputBuilder(categoryClusters);
             }
           };
         });

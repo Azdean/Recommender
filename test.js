@@ -2,8 +2,8 @@ var recommender = require('./recommender.js');
 
 recommender(
   {
-    'personID': '573873c03412e8ed0bc2b0fe',
-    'productsToExclude': ['R-9781595142900B'],
+    'personID': '56ad4219adb98b1332c1b5da',
+    'productsToExclude': [],
     'categoriesToExclude': [],
     'moreInfo': true
   }
