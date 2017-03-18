@@ -20,7 +20,7 @@ var MongoClient = require('mongodb').MongoClient,
     collab = require('./collabFilter/collabFilter.js'),
     collabFilter = new collab();
 
-module.exports = function recommender (parameters, next) {
+module.exports = function recommender (parameters, callback) {
 
   /* SETUP */
   /* Assign running parameters from function parameters or set default values */
@@ -37,7 +37,7 @@ module.exports = function recommender (parameters, next) {
   var moreInfo = parameters.moreInfo || false;
   var misc = {};
   var items = [];
-  console.time(chalk.bgWhite.black.bold('Execution time'));
+  var executionStart = Date.now();
 
   if(typeof parameters.personID !== 'NULL' && typeof parameters.personID !== 'undefined' && parameters.personID.length){
     var personID = parameters.personID;
@@ -734,8 +734,10 @@ module.exports = function recommender (parameters, next) {
               }
             } else {
               db.close();
-              // next();
-              outputBuilder(categoryClusters);
+              misc.executionTime = (Date.now() - executionStart)/1000 + 'ms';
+              misc.personID = personID;
+              categoryClusters.push({'moreInfo': moreInfo, 'misc': misc});
+              callback(categoryClusters);
             }
           };
         });
@@ -746,77 +748,4 @@ module.exports = function recommender (parameters, next) {
     var categoryClusters = helpers.sorter(helpers.categoryCluster(categoryWeights, items));
     helpers.queryBuilder(categoryClusters);
   };
-
-  function outputBuilder(categoryClusters) {
-    // If integrated into a larger system the categoryClusters object can be returned. However the following function prints the data out to the console.
-
-    console.log(chalk.bgCyan.black('- - Recommended Products - -'));
-    for (var i = 0; i < categoryClusters.length; i++) {
-      var products = categoryClusters[i].products;
-
-      if(products){
-        for (var x = 0; x < products.length; x++) {
-          var product = products[x];
-          console.log(chalk.cyan(product.n));
-        }
-      }
-    }
-
-    console.log(chalk.bgGreen.black('- - Based on Clusters - -'));
-    for (var i = 0; i < categoryClusters.length; i++) {
-      var categories = categoryClusters[i].categories;
-
-      console.log(chalk.green(JSON.stringify(categories, null, 1)));
-    }
-
-    if(moreInfo){
-      console.log(chalk.bgYellow.black('- - More Info - -'));
-      for (var i = 0; i < categoryClusters.length; i++) {
-        var cluster = categoryClusters[i];
-        console.log(chalk.yellow('Cluster ID: ') + cluster.id);
-        console.log(chalk.yellow('Cluster Type: ') + ((cluster.id.search('CF') ? 'Proportional Representation Algorithm' : 'Collaborative Filter')));
-
-        var categories = '';
-        if(typeof cluster.categories !== 'string'){
-          for (var x = 0; x < cluster.categories.length; x++) {
-            if(cluster.categories[x]){
-              categories += '[' + cluster.categories[x] + '], ';
-            }
-          }
-        } else {
-            categories = cluster.categories;
-        }
-        console.log(chalk.yellow('Cluster Categories: ') + categories);
-
-        console.log(chalk.yellow('Cluster Weight: ') + cluster.weight);
-        console.log(chalk.yellow('Cluster Output Percentage: ') + cluster.percentage + '%');
-        if(cluster.products === null){
-            console.log(chalk.yellow('Number of products recommended from this cluster:') + ' 0');
-            console.log(chalk.yellow('Recommended products belonging to this cluster:') + ' None');
-        } else {
-          console.log(chalk.yellow('Number of products recommended from this cluster: ') + cluster.products.length);
-          var productsRecommended = '';
-          for (var x = 0; x < cluster.products.length; x++) {
-            productsRecommended += '[' + cluster.products[x].n + '], ';
-          }
-          if (!productsRecommended) {
-            productsRecommended = 'None';
-          }
-          console.log(chalk.yellow('Recommended products belonging to this cluster: ') + productsRecommended);
-        }
-        if (cluster.flags.NP) {
-          console.log(chalk.red('Cluster returned no viable products'));
-        } else if (cluster.flags.PF) {
-          console.log(chalk.red('Cluster returned less products than required, fallback was used.'));
-        }
-        console.log(chalk.yellow('- - - - - - -'));
-      }
-      console.log(chalk.bgMagenta.white('- - Collaborative Filter Output - -'));
-      console.log(misc.CFRecommendation);
-      console.log(chalk.magenta('- - - - - - -'));
-    }
-
-    console.timeEnd(chalk.bgWhite.black.bold('Execution time')); // Execution time
-    process.exit(0); // Exit process
-  }
 }
