@@ -24,7 +24,7 @@ module.exports = function recommender (parameters, callback) {
 
   /* SETUP */
   /* Assign running parameters from function parameters or set default values */
-  var databaseConnectionURL = parameters.databaseURL || "mongodb://localhost:27017/recommender";
+  var databaseConnectionURL = parameters.databaseURL;
   var productCollection = parameters.productCollection || 'products';
   var signalCollection = parameters.signalCollection || 'signals';
   var productsToExclude = parameters.productsToExclude || [];

@@ -6,11 +6,12 @@ var MongoClient = require('mongodb').MongoClient;
 recommender(
   {
     'personID': '573873c03412e8ed0bc2b0fe',
+    'databaseURL': 'INSERT YOUR DATABASE CONNECTION URL HERE eg. mongodb://localhost:27017/recommenderDB'
     'productsToExclude': [],
     'categoriesToExclude': [],
     'moreInfo': true
   },
-  saveToMongo
+  printToConsole
 );
 
 function printToConsole (categoryClusters) {
